@@ -54,7 +54,7 @@ class _TeleprompterScreenContent extends StatefulWidget {
 }
 
 class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   AnimationController? _animationController;
   Animation<double>? _animation;
@@ -217,8 +217,13 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
   void _initializeScrolling(double speed) {
     debugPrint('🔧 _initializeScrolling called with speed: $speed');
     
-    if (!mounted || !_scrollController.hasClients) {
-      debugPrint('⚠️ Cannot initialize: mounted=$mounted, hasClients=${_scrollController.hasClients}');
+    if (!mounted) {
+      debugPrint('⚠️ Widget not mounted');
+      return;
+    }
+    
+    if (!_scrollController.hasClients) {
+      debugPrint('⚠️ ScrollController has no clients');
       return;
     }
     
@@ -234,19 +239,17 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
       return;
     }
     
-    // Stop and dispose old controller if exists and hasn't been disposed
+    // Stop and dispose old controller if exists
     if (_animationController != null) {
       try {
-        // Stop if animating
         if (_animationController!.isAnimating) {
           _animationController!.stop();
           debugPrint('🛑 Stopped running animation');
         }
-        // Dispose if not already disposed
         _animationController!.dispose();
         debugPrint('🗑️ Old animation controller disposed');
       } catch (e) {
-        debugPrint('⚠️ Error disposing controller (probably already disposed): $e');
+        debugPrint('⚠️ Error disposing controller: $e');
       }
       _animationController = null;
       _animation = null;
@@ -265,6 +268,8 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
       duration: duration,
     );
     
+    debugPrint('🎛️ Animation controller created');
+    
     _animation = Tween<double>(
       begin: currentScroll,
       end: maxScroll,
@@ -274,6 +279,8 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
         curve: Curves.linear,
       ),
     );
+    
+    debugPrint('📐 Animation tween created');
     
     _animation!.addListener(() {
       if (_scrollController.hasClients && mounted) {
@@ -289,9 +296,12 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
       }
     });
     
+    debugPrint('🎬 Starting animation forward...');
+    
     // Start animation
     _animationController!.forward();
-    debugPrint('▶️ Animation started!');
+    
+    debugPrint('▶️ Animation DONE! Status: ${_animationController!.status}, IsAnimating: ${_animationController!.isAnimating}');
   }
   
   void _stopScrolling() {
@@ -610,8 +620,16 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
       bloc.add(PlayTeleprompter());
       debugPrint('   ✅ BLoC updated to PLAYING');
       
-      // Start scrolling DIRECTLY (no async wrappers!)
-      _initializeScrolling(speed);
+      // Use post-frame callback HERE to ensure state is updated
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        debugPrint('   📍 Post-frame callback executing...');
+        if (mounted) {
+          _initializeScrolling(speed);
+        } else {
+          debugPrint('   ⚠️ Widget no longer mounted');
+        }
+      });
+      
       debugPrint('═══════════════════════════════════════');
     }
   }

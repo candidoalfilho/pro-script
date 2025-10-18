@@ -234,10 +234,22 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
       return;
     }
     
-    // Dispose old controller if exists
+    // Stop and dispose old controller if exists and hasn't been disposed
     if (_animationController != null) {
-      _animationController!.dispose();
-      debugPrint('🗑️ Old animation controller disposed');
+      try {
+        // Stop if animating
+        if (_animationController!.isAnimating) {
+          _animationController!.stop();
+          debugPrint('🛑 Stopped running animation');
+        }
+        // Dispose if not already disposed
+        _animationController!.dispose();
+        debugPrint('🗑️ Old animation controller disposed');
+      } catch (e) {
+        debugPrint('⚠️ Error disposing controller (probably already disposed): $e');
+      }
+      _animationController = null;
+      _animation = null;
     }
     
     // Calculate duration based on speed (pixels per second)
@@ -560,10 +572,16 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
       debugPrint('');
       debugPrint('⏸️ PAUSING...');
       
-      // Stop animation
-      if (_animationController != null && _animationController!.isAnimating) {
-        _animationController!.stop();
-        debugPrint('   ✅ Animation stopped');
+      // Stop animation but DON'T dispose (we need it for resume!)
+      if (_animationController != null) {
+        if (_animationController!.isAnimating) {
+          _animationController!.stop();
+          debugPrint('   ✅ Animation stopped');
+        } else {
+          debugPrint('   ⚠️ Animation controller exists but not animating');
+        }
+      } else {
+        debugPrint('   ⚠️ No animation controller to stop');
       }
       
       // Update BLoC

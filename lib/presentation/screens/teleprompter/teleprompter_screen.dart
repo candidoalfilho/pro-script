@@ -215,61 +215,71 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
   }
   
   void _initializeScrolling(double speed) {
-    // Dispose previous controller
-    _animationController?.dispose();
+    debugPrint('🔧 _initializeScrolling called with speed: $speed');
     
-    // Wait for next frame to ensure scroll controller is ready
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      
-      final maxScroll = _scrollController.position.maxScrollExtent;
-      final currentScroll = _scrollController.offset;
-      final remainingScroll = maxScroll - currentScroll;
-      
-      if (remainingScroll <= 1.0) {
-        _stopScrolling();
-        return;
+    if (!mounted || !_scrollController.hasClients) {
+      debugPrint('⚠️ Cannot initialize: mounted=$mounted, hasClients=${_scrollController.hasClients}');
+      return;
+    }
+    
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.offset;
+    final remainingScroll = maxScroll - currentScroll;
+    
+    debugPrint('📏 Max: $maxScroll, Current: $currentScroll, Remaining: $remainingScroll');
+    
+    if (remainingScroll <= 1.0) {
+      debugPrint('⚠️ No more content to scroll');
+      _stopScrolling();
+      return;
+    }
+    
+    // Dispose old controller if exists
+    if (_animationController != null) {
+      _animationController!.dispose();
+      debugPrint('🗑️ Old animation controller disposed');
+    }
+    
+    // Calculate duration based on speed (pixels per second)
+    final duration = Duration(
+      milliseconds: (remainingScroll / speed * 1000).toInt(),
+    );
+    
+    debugPrint('⏱️ Duration: ${duration.inMilliseconds}ms');
+    
+    // Create new controller
+    _animationController = AnimationController(
+      vsync: this,
+      duration: duration,
+    );
+    
+    _animation = Tween<double>(
+      begin: currentScroll,
+      end: maxScroll,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController!,
+        curve: Curves.linear,
+      ),
+    );
+    
+    _animation!.addListener(() {
+      if (_scrollController.hasClients && mounted) {
+        _scrollController.jumpTo(_animation!.value);
       }
-      
-      // Calculate duration based on speed (pixels per second)
-      final duration = Duration(
-        milliseconds: (remainingScroll / speed * 1000).toInt(),
-      );
-      
-      _animationController = AnimationController(
-        vsync: this,
-        duration: duration,
-      );
-      
-      _animation = Tween<double>(
-        begin: currentScroll,
-        end: maxScroll,
-      ).animate(
-        CurvedAnimation(
-          parent: _animationController!,
-          curve: Curves.linear,
-        ),
-      );
-      
-      _animation!.addListener(() {
-        if (_scrollController.hasClients && mounted) {
-          _scrollController.jumpTo(_animation!.value);
-        }
-      });
-      
-      _animation!.addStatusListener((status) {
-        if (status == AnimationStatus.completed) {
-          _stopScrolling();
-          _showEndOfVideoDialog();
-        }
-      });
-      
-      // Start animation
-      _animationController!.forward();
-      
-      // Debug feedback
-      debugPrint('✅ Scrolling started at speed: $speed px/s');
     });
+    
+    _animation!.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        debugPrint('✅ Animation completed');
+        _stopScrolling();
+        _showEndOfVideoDialog();
+      }
+    });
+    
+    // Start animation
+    _animationController!.forward();
+    debugPrint('▶️ Animation started!');
   }
   
   void _stopScrolling() {
@@ -524,76 +534,67 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
     final bloc = context.read<TeleprompterBloc>();
     final state = bloc.state;
     
-    debugPrint('🎬 Toggle Play/Pause called');
-    debugPrint('📊 State: ${state.runtimeType}');
+    debugPrint('');
+    debugPrint('═══════════════════════════════════════');
+    debugPrint('🎬 TOGGLE PLAY/PAUSE CALLED');
+    debugPrint('═══════════════════════════════════════');
     
     if (state is! TeleprompterReady) {
-      debugPrint('⚠️ State is not TeleprompterReady');
+      debugPrint('⚠️ ERROR: State is not TeleprompterReady: ${state.runtimeType}');
       return;
     }
     
     final currentState = state;
-    debugPrint('📊 isPlaying=${currentState.isPlaying}, Camera=$_showCamera, Recording=$_isRecording');
-    debugPrint('📊 ScrollController.hasClients=${_scrollController.hasClients}');
-    debugPrint('📊 Current position: ${_scrollController.hasClients ? _scrollController.offset : 'N/A'}');
+    debugPrint('📊 Current BLoC State:');
+    debugPrint('   - isPlaying: ${currentState.isPlaying}');
+    debugPrint('   - Camera active: $_showCamera');
+    debugPrint('   - Recording: $_isRecording');
+    debugPrint('   - Scroll position: ${_scrollController.hasClients ? _scrollController.offset.toStringAsFixed(1) : 'N/A'}');
+    debugPrint('   - Animation exists: ${_animationController != null}');
+    debugPrint('   - Animation animating: ${_animationController?.isAnimating ?? false}');
     
     if (currentState.isPlaying) {
-      // Currently playing → PAUSE
+      // ═══════════════════════════════════════
+      // CURRENTLY PLAYING → PAUSE
+      // ═══════════════════════════════════════
+      debugPrint('');
       debugPrint('⏸️ PAUSING...');
       
-      // Stop animation first
-      if (_animationController != null) {
-        if (_animationController!.isAnimating) {
-          _animationController!.stop();
-          debugPrint('⏸️ Animation controller stopped');
-        }
-        // Don't dispose, keep it for resume
+      // Stop animation
+      if (_animationController != null && _animationController!.isAnimating) {
+        _animationController!.stop();
+        debugPrint('   ✅ Animation stopped');
       }
       
-      // Update BLoC state
+      // Update BLoC
       bloc.add(PauseTeleprompter());
-      debugPrint('⏸️ PAUSED at position: ${_scrollController.hasClients ? _scrollController.offset : 'N/A'}');
+      debugPrint('   ✅ BLoC updated to PAUSED');
+      debugPrint('   📍 Final position: ${_scrollController.hasClients ? _scrollController.offset.toStringAsFixed(1) : 'N/A'}');
+      debugPrint('═══════════════════════════════════════');
       
     } else {
-      // Currently paused → PLAY
+      // ═══════════════════════════════════════
+      // CURRENTLY PAUSED → PLAY
+      // ═══════════════════════════════════════
+      debugPrint('');
       debugPrint('▶️ PLAYING...');
       
-      // Update BLoC state first
-      bloc.add(PlayTeleprompter());
-      
-      // Get current speed from settings
+      // Get speed
       final settingsBloc = context.read<SettingsBloc>();
       final settingsState = settingsBloc.state;
       final speed = (settingsState is SettingsLoaded) 
           ? settingsState.settings.scrollSpeed 
           : 50.0;
       
-      debugPrint('▶️ Speed: $speed px/s');
+      debugPrint('   ⚙️ Speed: $speed px/s');
       
-      // Wait for next frame to ensure state is updated
-      Future.microtask(() {
-        if (!mounted) {
-          debugPrint('⚠️ Widget no longer mounted');
-          return;
-        }
-        
-        if (!_scrollController.hasClients) {
-          debugPrint('⚠️ ScrollController has no clients yet');
-          // Retry after a small delay
-          Future.delayed(const Duration(milliseconds: 50), () {
-            if (mounted && _scrollController.hasClients) {
-              debugPrint('🔄 Retrying scroll initialization...');
-              _initializeScrolling(speed);
-              debugPrint('✅ Scrolling STARTED (retry)');
-            }
-          });
-          return;
-        }
-        
-        // Initialize scrolling
-        _initializeScrolling(speed);
-        debugPrint('✅ Scrolling STARTED from position: ${_scrollController.offset}');
-      });
+      // Update BLoC FIRST
+      bloc.add(PlayTeleprompter());
+      debugPrint('   ✅ BLoC updated to PLAYING');
+      
+      // Start scrolling DIRECTLY (no async wrappers!)
+      _initializeScrolling(speed);
+      debugPrint('═══════════════════════════════════════');
     }
   }
   

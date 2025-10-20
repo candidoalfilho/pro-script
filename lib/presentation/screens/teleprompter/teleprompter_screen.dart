@@ -854,7 +854,10 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
                                 ],
                               ),
                               clipBehavior: Clip.antiAlias,
-                              child: CameraPreview(_cameraController!),
+                              child: RotatedBox(
+                                quarterTurns: isLandscape ? 3 : 0, // Landscape: rotate 270° (counter-clockwise), Portrait: no rotation
+                                child: CameraPreview(_cameraController!),
+                              ),
                             );
                           },
                         ),

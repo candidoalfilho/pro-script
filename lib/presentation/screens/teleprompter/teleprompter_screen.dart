@@ -292,7 +292,8 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
       if (status == AnimationStatus.completed) {
         debugPrint('✅ Animation completed');
         _stopScrolling();
-        _showEndOfVideoDialog();
+        // Don't show dialog - just stop scrolling
+        // Dialog only appears after recording is stopped
       }
     });
     
@@ -430,128 +431,6 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
     );
   }
   
-  void _showEndOfVideoDialog() {
-    if (!mounted) return;
-    
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.black87,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Colors.white24, width: 2),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.green, size: 32),
-            SizedBox(width: 12),
-            Text(
-              'Script Finalizado!',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'O que deseja fazer agora?',
-              style: TextStyle(color: Colors.white70, fontSize: 16),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            
-            // Record Again Button
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                // Reset and restart
-                context.read<TeleprompterBloc>().add(ResetTeleprompter());
-                _scrollController.jumpTo(0);
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Pressione PLAY para começar novamente'),
-                    duration: Duration(seconds: 2),
-                    backgroundColor: Colors.blue,
-                  ),
-                );
-              },
-              icon: const Icon(Icons.replay, size: 24),
-              label: const Text(
-                'Gravar Novamente',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                minimumSize: const Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            
-            // Save/Share Button
-            ElevatedButton.icon(
-              onPressed: () async {
-                Navigator.pop(context);
-                
-                // Share script text
-                try {
-                  final scriptTitle = widget.scriptTitle ?? 'Meu Script';
-                  await Share.share(
-                    widget.content,
-                    subject: scriptTitle,
-                  );
-                } catch (e) {
-                  debugPrint('Error sharing: $e');
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Erro ao compartilhar: $e'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                }
-              },
-              icon: const Icon(Icons.share, size: 24),
-              label: const Text(
-                'Salvar/Compartilhar Texto',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                minimumSize: const Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            
-            // Continue/Close Button
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: const Text(
-                'Continuar Editando',
-                style: TextStyle(color: Colors.white70, fontSize: 14),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  
   void _togglePlayPause() {
     final bloc = context.read<TeleprompterBloc>();
     final state = bloc.state;
@@ -672,6 +551,10 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
     try {
       if (_isRecording) {
         // STOP RECORDING
+        // Unlock camera orientation
+        await _cameraController!.unlockCaptureOrientation();
+        debugPrint('🔓 Camera orientation unlocked');
+        
         final file = await _cameraController!.stopVideoRecording();
         _recordingTimer?.cancel();
         
@@ -811,6 +694,10 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
         // START RECORDING
         debugPrint('🎬 Iniciando gravação...');
         
+        // Lock camera orientation to current device orientation
+        await _cameraController!.lockCaptureOrientation();
+        debugPrint('🔒 Camera orientation locked to current device orientation');
+        
         await _cameraController!.startVideoRecording();
         setState(() {
           _isRecording = true;
@@ -940,27 +827,36 @@ class _TeleprompterScreenContentState extends State<_TeleprompterScreenContent>
                       Positioned(
                         top: 80,
                         right: 20,
-                        child: Container(
-                          width: 140,
-                          height: 180,
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: _isRecording ? Colors.red : Colors.white,
-                              width: _isRecording ? 3 : 2,
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: _isRecording 
-                                  ? Colors.red.withValues(alpha: 0.5)
-                                  : Colors.black.withValues(alpha: 0.5),
-                                blurRadius: 10,
-                                spreadRadius: 2,
+                        child: Builder(
+                          builder: (context) {
+                            // Check orientation using MediaQuery
+                            final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+                            final boxWidth = isLandscape ? 240.0 : 140.0;
+                            final boxHeight = isLandscape ? 135.0 : 180.0;
+                            
+                            return Container(
+                              width: boxWidth,
+                              height: boxHeight,
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: _isRecording ? Colors.red : Colors.white,
+                                  width: _isRecording ? 3 : 2,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: _isRecording 
+                                      ? Colors.red.withValues(alpha: 0.5)
+                                      : Colors.black.withValues(alpha: 0.5),
+                                    blurRadius: 10,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: CameraPreview(_cameraController!),
+                              clipBehavior: Clip.antiAlias,
+                              child: CameraPreview(_cameraController!),
+                            );
+                          },
                         ),
                       ),
                     
